@@ -1,0 +1,20 @@
+# Виртуальное окружение
+.venv/
+venv/
+
+# PyCharm / IDE
+.idea/
+*.iml
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Временные файлы Excel
+~$*.xlsx
+
+# Результаты работы пайплайна
+output/charts/*.png
+output/reports/*.xlsx
+data/generated/*
