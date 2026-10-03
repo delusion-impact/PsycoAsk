@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PsycoAsk — генерация анкет</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◉</span>
+      <div>
+        <h1>PsycoAsk</h1>
+        <p>Генерация анкет и визуализация</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <button class="chip" id="workspace-chip" title="Открыть рабочую папку">…</button>
+      <span class="chip muted" id="version-chip">v__APP_VERSION__</span>
+    </div>
+  </header>
+
+  <nav class="steps" id="steps">
+    <button class="step is-active" data-step="1"><b>1</b><span>Выгрузка</span></button>
+    <button class="step" data-step="2"><b>2</b><span>Генерация</span></button>
+    <button class="step" data-step="3"><b>3</b><span>Визуализация</span></button>
+  </nav>
+
+  <main>
+    <!-- Шаг 1. Выбор выгрузки -->
+    <section class="panel is-active" data-panel="1">
+      <h2>Какую выгрузку обработать?</h2>
+      <p class="hint">Подойдёт любой .xlsx с первой строкой заголовков: остальные столбцы станут вопросами.</p>
+
+      <div class="row">
+        <label class="btn btn-secondary" for="upload">
+          Загрузить файл с диска
+          <input type="file" id="upload" accept=".xlsx,.xls,.xlsm" hidden>
+        </label>
+        <span class="hint-inline">Файлы берутся из папки <code>data/input</code> рабочего каталога</span>
+      </div>
+
+      <ul class="filelist" id="inputs"></ul>
+
+      <div class="nav-row">
+        <span></span>
+        <button class="btn btn-primary" id="to-2" disabled>Продолжить</button>
+      </div>
+    </section>
+
+    <!-- Шаг 2. Генерация -->
+    <section class="panel" data-panel="2">
+      <h2>Сколько анкет сгенерировать?</h2>
+      <p class="hint" id="parse-summary">Сначала разберём выбранную выгрузку: получим словарь вопросов и вариантов ответов.</p>
+
+      <div class="count-box">
+        <input type="number" id="count" value="100" min="1" max="1000" step="1">
+        <input type="range" id="count-range" value="100" min="1" max="1000" step="1">
+        <div class="presets">
+          <button class="chip-btn" data-count="25">25</button>
+          <button class="chip-btn" data-count="50">50</button>
+          <button class="chip-btn" data-count="100">100</button>
+          <button class="chip-btn" data-count="250">250</button>
+          <button class="chip-btn" data-count="500">500</button>
+        </div>
+      </div>
+
+      <details class="questions" id="questions-box" hidden>
+        <summary>Как выглядит словарь вопросов</summary>
+        <div id="questions-list"></div>
+      </details>
+
+      <div class="nav-row">
+        <button class="btn btn-ghost" data-goto="1">Назад</button>
+        <span class="row-buttons">
+          <button class="btn btn-ghost" id="to-results-gen" disabled>Результаты</button>
+          <button class="btn btn-primary" id="run-generate" disabled>Генерация анкет</button>
+        </span>
+      </div>
+    </section>
+
+    <!-- Шаг 3. Визуализация -->
+    <section class="panel" data-panel="3">
+      <h2>Что построить?</h2>
+      <p class="hint">Оба шага необязательные, но нужен хотя бы один. Файлы получают штамп даты-времени.</p>
+
+      <label class="option">
+        <input type="checkbox" id="opt-charts" checked>
+        <div>
+          <b>Графики (PNG)</b>
+          <span>Тепловая карта ответов и сравнение оригинала с генерацией</span>
+        </div>
+      </label>
+
+      <label class="option">
+        <input type="checkbox" id="opt-reports" checked>
+        <div>
+          <b>Отчёты Excel</b>
+          <span>Распределения с цветовой шкалой и таблица с Data Bars</span>
+        </div>
+      </label>
+
+      <div class="nav-row">
+        <button class="btn btn-ghost" data-goto="2">Назад</button>
+        <span class="row-buttons">
+          <button class="btn btn-ghost" id="to-results-viz" disabled>Результаты</button>
+          <button class="btn btn-primary" id="run-visualize" disabled>Построить</button>
+        </span>
+      </div>
+    </section>
+
+    <!-- Результаты (не шаг мастера) -->
+    <section class="panel" data-panel="results">
+      <h2>Готово — файлы прогона</h2>
+      <p class="hint" id="result-summary">Файлы этого прогона — с одинаковым штампом в имени.</p>
+
+      <ul class="artifacts" id="artifacts"></ul>
+
+      <div class="nav-row">
+        <button class="btn btn-ghost" data-goto="1">В начало</button>
+        <span class="row-buttons">
+          <button class="btn btn-secondary" data-goto="2">Генерация</button>
+          <button class="btn btn-secondary" data-goto="3">Визуализация</button>
+          <button class="btn btn-secondary" id="open-folder">Открыть папку результатов</button>
+        </span>
+      </div>
+    </section>
+
+    <!-- Ход работы: обычный блок на странице, не всплывающее окно -->
+    <section class="taskbox" id="taskbox" hidden>
+      <div class="taskbox-head">
+        <strong id="task-title">Выполняется</strong>
+        <span id="task-pct">0%</span>
+      </div>
+      <div class="bar"><div class="bar-fill" id="task-bar"></div></div>
+      <pre class="task-log" id="task-log"></pre>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script>window.PSYCOASK_TOKEN = "__APP_TOKEN__";</script>
+  <script src="/app.js"></script>
+</body>
+</html>

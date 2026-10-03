@@ -1,0 +1,318 @@
+:root {
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --ink: #1f2733;
+  --muted: #6b7688;
+  --line: #dfe4ec;
+  --accent: #4c72b0;
+  --accent-dark: #3a5a91;
+  --ok: #2f855a;
+  --err: #c53030;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.55 "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+h1 { margin: 0; font-size: 19px; letter-spacing: .2px; }
+h2 { margin: 0 0 6px; font-size: 21px; }
+
+/* --- Верхняя панель --- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 26px;
+  background: linear-gradient(105deg, #33405c, #4c72b0);
+  color: #fff;
+}
+
+.brand { display: flex; align-items: center; gap: 13px; }
+.brand .logo { font-size: 26px; opacity: .9; }
+.brand p { margin: 1px 0 0; font-size: 12.5px; opacity: .8; }
+
+.topbar-right { display: flex; align-items: center; gap: 8px; }
+
+.chip {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .17);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Рабочая папка открывается по клику — придаём кнопке вид ссылки */
+button.chip { cursor: pointer; }
+button.chip:hover { background: rgba(255, 255, 255, .3); }
+
+.chip.muted { background: rgba(255, 255, 255, .1); cursor: default; }
+
+/* --- Шаги --- */
+
+.steps {
+  display: flex;
+  gap: 2px;
+  padding: 0 26px;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 13px 20px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.step b {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #e7ebf3;
+  font-size: 12px;
+}
+
+.step.is-active { color: var(--accent-dark); border-bottom-color: var(--accent); font-weight: 600; }
+.step.is-active b { background: var(--accent); color: #fff; }
+.step.is-done b { background: #d8ecdf; color: var(--ok); }
+.step:disabled { opacity: .45; cursor: not-allowed; }
+
+/* --- Панели --- */
+
+main { max-width: 1080px; margin: 0 auto; padding: 26px; }
+
+.panel {
+  display: none;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 24px 26px 20px;
+  box-shadow: 0 1px 3px rgba(20, 30, 50, .05);
+}
+
+.panel.is-active { display: block; }
+
+.hint { margin: 0 0 18px; color: var(--muted); font-size: 13.5px; }
+
+.hint-inline { color: var(--muted); font-size: 12.5px; }
+.hint-inline code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #eef1f7;
+  font-size: 12px;
+}
+
+.row { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; }
+
+/* --- Кнопки --- */
+
+.btn {
+  padding: 9px 18px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: #eceff5;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) { filter: brightness(.97); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-dark); }
+.btn-secondary { background: #fff; border-color: var(--line); color: var(--accent-dark); }
+.btn-ghost { background: none; color: var(--muted); }
+
+.nav-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.row-buttons { display: flex; align-items: center; gap: 10px; }
+
+/* --- Список файлов --- */
+
+.filelist, .artifacts { list-style: none; margin: 0; padding: 0; }
+
+.filelist li, .artifacts li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+.filelist li:hover { border-color: var(--accent); background: #f8fafd; }
+.filelist li.is-selected { border-color: var(--accent); background: #eef3fb; }
+
+.file-icon { font-size: 19px; }
+.file-name { flex: 1; font-weight: 500; word-break: break-all; }
+.file-meta { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+
+.empty { padding: 18px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); text-align: center; }
+
+/* --- Количество --- */
+
+.count-box {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 14px 18px;
+  align-items: center;
+  padding: 18px;
+  background: #f8fafd;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.count-box input[type=number] {
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font: inherit;
+  width: 100%;
+}
+
+.count-box input[type=range] { width: 100%; accent-color: var(--accent); }
+.presets { grid-column: 1 / -1; display: flex; gap: 8px; }
+
+.chip-btn {
+  padding: 5px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.chip-btn:hover { border-color: var(--accent); color: var(--accent-dark); }
+
+/* --- Вопросы --- */
+
+.questions { margin-top: 16px; }
+.questions summary { cursor: pointer; color: var(--accent-dark); font-size: 13.5px; }
+.questions > div { margin-top: 10px; display: grid; gap: 8px; }
+
+.q-item { padding: 9px 12px; border-left: 3px solid var(--accent); background: #f8fafd; border-radius: 0 6px 6px 0; }
+.q-item b { font-size: 13.5px; }
+.q-item span { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+
+/* --- Опции визуализации --- */
+
+.option {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.option:hover { border-color: var(--accent); }
+.option input { margin-top: 3px; accent-color: var(--accent); }
+.option b { display: block; }
+.option span { color: var(--muted); font-size: 13px; }
+
+/* --- Результаты --- */
+
+.artifacts li { cursor: default; align-items: center; }
+.artifacts .kind {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #eef1f7;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--muted);
+}
+
+.preview-box { margin-top: 18px; }
+.preview-box summary { cursor: pointer; color: var(--accent-dark); font-size: 13.5px; }
+
+/* --- Ход работы --- */
+/* Обычный блок в потоке страницы, а не всплывающее окно: перекрывал панели
+   и оставался на экране после завершения задачи. */
+
+.taskbox {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.taskbox-head { display: flex; justify-content: space-between; margin-bottom: 9px; font-size: 14px; }
+
+.bar { height: 7px; border-radius: 999px; background: #e7ebf3; overflow: hidden; }
+.bar-fill { height: 100%; width: 0; background: var(--accent); transition: width .25s ease; }
+
+.task-log {
+  margin: 11px 0 0;
+  padding: 9px 11px;
+  max-height: 170px;
+  overflow: auto;
+  background: #f7f9fc;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: 12px/1.5 Consolas, "Cascadia Mono", monospace;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+/* --- Уведомление --- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  top: 22px;
+  transform: translateX(-50%);
+  padding: 11px 20px;
+  border-radius: 7px;
+  background: #26313f;
+  color: #fff;
+  box-shadow: 0 5px 18px rgba(20, 30, 50, .25);
+  z-index: 10;
+}
+
+.toast.is-error { background: var(--err); }
+.toast.is-ok { background: var(--ok); }
+
+@media (max-width: 720px) {
+  .count-box { grid-template-columns: 1fr; }
+  main { padding: 16px; }
+  .topbar { flex-wrap: wrap; }
+}

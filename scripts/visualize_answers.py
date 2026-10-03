@@ -1,7 +1,10 @@
-import pandas as pd
+from __future__ import annotations
+
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import numpy as np
+import pandas as pd
 
 from paths import CHARTS_DIR, GENERATED_JSON, ensure_dirs, stamped
 
@@ -12,22 +15,21 @@ MAX_QUESTIONS = None  # None = все вопросы, или число для �
 FIG_WIDTH = 24  # Ширина листа в дюймах
 BAR_HEIGHT = 0.6  # Толщина полосы ответа
 
-# Палитра для категорийных ответов (до 10 уникальных цветов)
+# Палитра для категориальных ответов (до 10 уникальных цветов)
 COLORS = [
     "#4C72B0", "#DD8452", "#55A868", "#C44E52", "#8172B3",
     "#937860", "#DA8BC3", "#8C8C8C", "#CCB974", "#64B5CD"
 ]
 
-ensure_dirs()
 
-
-def load_and_prepare(filepath):
+def load_and_prepare(filepath, max_questions=None):
+    limit = MAX_QUESTIONS if max_questions is None else max_questions
     df = pd.read_json(filepath, orient='records')
     # Убираем служебные колонки
     exclude = {"ID", "Время создания"}
     cols = [c for c in df.columns if c not in exclude]
-    if MAX_QUESTIONS:
-        cols = cols[:MAX_QUESTIONS]
+    if limit:
+        cols = cols[:limit]
     return df[cols]
 
 
@@ -43,7 +45,12 @@ def build_legend(answer_to_color):
     return patches
 
 
-def plot_answer_heatmap(df):
+def plot_answer_heatmap(df, output=None, show=True):
+    """Строит 100 %-ную диаграмму по всем вопросам и возвращает путь к PNG.
+
+    show=False нужен графическому приложению: без него matplotlib открыл бы
+    окно и блокировал фоновый поток задачи.
+    """
     n_questions = len(df.columns)
 
     # Определяем глобальную палитру: маппинг ответ -> цвет
@@ -104,12 +111,24 @@ def plot_answer_heatmap(df):
     ax.tick_params(axis='x', labelsize=9)
 
     plt.tight_layout()
-    out_path = stamped(CHARTS_DIR / "answer_heatmap.png")
+    out_path = Path(output) if output else stamped(Path(OUTPUT_DIR) / "answer_heatmap.png")
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=150, bbox_inches='tight')
-    plt.show()
+    if show:
+        plt.show()
+    plt.close(fig)
     print(f"✅ Тепловая карта сохранена: {out_path}")
+    return out_path
+
+
+def build_heatmap(source=None, output=None, show=True):
+    """Тепловая карта ответов: файл после генерации → PNG."""
+    ensure_dirs()
+    df = load_and_prepare(source or INPUT_FILE)
+    return plot_answer_heatmap(df, output=output, show=show)
 
 
 if __name__ == "__main__":
+    ensure_dirs()
     df = load_and_prepare(INPUT_FILE)
     plot_answer_heatmap(df)

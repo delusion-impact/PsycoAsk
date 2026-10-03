@@ -34,20 +34,26 @@ LIKERT_VALUES = {answer: rank for rank, answer in enumerate(LIKERT_SCALE, start=
 EMPTY_LABEL = "(пусто)"
 
 
-def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
-    for path in (ORIGINAL_FILE, GENERATED_FILE):
-        if not Path(path).exists():
+def load_data(original=None, generated=None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Читает оригинал и генерацию. Пути необязательны — по умолчанию из paths."""
+    orig_path = Path(original) if original else Path(ORIGINAL_FILE)
+    gen_path = Path(generated) if generated else Path(GENERATED_FILE)
+    for path in (orig_path, gen_path):
+        if not path.exists():
             raise FileNotFoundError(f"Файл не найден: {path} — сначала выполните предыдущие шаги пайплайна")
-    return (pd.read_json(ORIGINAL_FILE, orient='records'),
-            pd.read_json(GENERATED_FILE, orient='records'))
+    return (pd.read_json(orig_path, orient='records'),
+            pd.read_json(gen_path, orient='records'))
 
 
-def save_figure(fig, filename: str):
+def save_figure(fig, filename: str, show: bool = True) -> Path:
     out_path = stamped(Path(OUTPUT_DIR) / filename)
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=150, bbox_inches='tight')
-    plt.show()
+    if show:
+        plt.show()
     plt.close(fig)
     print(f"✅ Сохранено: {out_path}")
+    return out_path
 
 
 def label_of(value) -> str:
@@ -62,13 +68,13 @@ def truncate(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit] + "..."
 
 
-def plot_gender_balance(orig: pd.DataFrame, gen: pd.DataFrame):
+def plot_gender_balance(orig: pd.DataFrame, gen: pd.DataFrame, show: bool = True):
     """Проверка баланса пола в оригинале и синтетике"""
     missing = [col for col in (MALE_COLUMN, FEMALE_COLUMN) if col not in orig.columns
                or col not in gen.columns]
     if missing:
         print(f"⚠️ Нет столбцов о поле ({', '.join(missing)}) — график баланса пола пропущен")
-        return
+        return None
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     counts_by_source = []
@@ -93,7 +99,7 @@ def plot_gender_balance(orig: pd.DataFrame, gen: pd.DataFrame):
                   f"{counts_by_source[0]} против {counts_by_source[1]} записей")
 
     plt.tight_layout()
-    save_figure(fig, "01_gender_balance.png")
+    return save_figure(fig, "01_gender_balance.png", show=show)
 
 
 def compare_categories(orig: pd.Series, gen: pd.Series) -> tuple[list[str], list[float], list[float]]:
@@ -107,13 +113,14 @@ def compare_categories(orig: pd.Series, gen: pd.Series) -> tuple[list[str], list
             [float(gen_counts.get(cat, 0.0)) for cat in categories])
 
 
-def plot_distributions_comparison(orig: pd.DataFrame, gen: pd.DataFrame, top_n: int = TOP_QUESTIONS):
+def plot_distributions_comparison(orig: pd.DataFrame, gen: pd.DataFrame,
+                                 top_n: int = TOP_QUESTIONS, show: bool = True):
     """Сравнение топ-N вопросов по количеству уникальных ответов"""
     # Вопросы, которые есть и в оригинале, и в генерации
     common = [col for col in orig.columns if col in gen.columns and col not in SERVICE_COLUMNS]
     if not common:
         print("⚠️ Нет общих вопросов между оригиналом и генерацией")
-        return
+        return None
 
     diversity = orig[common].nunique().sort_values(ascending=False).head(top_n).index.tolist()
 
@@ -145,16 +152,17 @@ def plot_distributions_comparison(orig: pd.DataFrame, gen: pd.DataFrame, top_n: 
         axes[idx].set_visible(False)
 
     plt.tight_layout()
-    save_figure(fig, "02_distributions_comparison.png")
+    return save_figure(fig, "02_distributions_comparison.png", show=show)
 
 
-def plot_likert_heatmap(df: pd.DataFrame, slug: str, title_suffix: str):
+def plot_likert_heatmap(df: pd.DataFrame, slug: str, title_suffix: str,
+                        show: bool = True):
     """Тепловая карта корреляций для вопросов со шкалой Лайкерта"""
     likert_cols = [col for col in df.columns if not col in SERVICE_COLUMNS
                    and df[col].isin(LIKERT_SCALE).any()]
     if not likert_cols:
         print(f"⚠️ Не найдено столбцов со шкалой Лайкерта{title_suffix}")
-        return
+        return None
 
     # Числовое кодирование для корреляции
     numeric_df = df[likert_cols].replace(LIKERT_VALUES).apply(pd.to_numeric, errors='coerce')
@@ -162,12 +170,12 @@ def plot_likert_heatmap(df: pd.DataFrame, slug: str, title_suffix: str):
 
     if numeric_df.shape[1] < 2:
         print(f"⚠️ Для корреляции нужно минимум 2 вопроса{title_suffix}, найдено {numeric_df.shape[1]}")
-        return
+        return None
 
     corr = numeric_df.corr().dropna(how="all").dropna(axis=1, how="all")
     if corr.empty:
         print(f"⚠️ Не удалось посчитать корреляции{title_suffix}")
-        return
+        return None
 
     fig, ax = plt.subplots(figsize=(20, 16))
     sns.heatmap(corr, ax=ax, annot=False, cmap="RdBu_r", center=0,
@@ -175,17 +183,26 @@ def plot_likert_heatmap(df: pd.DataFrame, slug: str, title_suffix: str):
                 yticklabels=[truncate(col, 30) for col in corr.index])
     ax.set_title(f"Корреляция ответов (шкала Лайкерта){title_suffix}", fontsize=14)
     plt.tight_layout()
-    save_figure(fig, f"03_likert_correlation_{slug}.png")
+    return save_figure(fig, f"03_likert_correlation_{slug}.png", show=show)
+
+
+def run_all(original=None, generated=None, show: bool = True) -> list[Path]:
+    """Все сравнительные графики. show=False — для фонового потока GUI."""
+    ensure_dirs()
+    orig, gen = load_data(original, generated)
+    print(f"📊 Построение графиков: оригинал {len(orig)} записей, генерация {len(gen)} записей")
+
+    produced = [
+        plot_gender_balance(orig, gen, show=show),
+        plot_distributions_comparison(orig, gen, show=show),
+        plot_likert_heatmap(orig, "original", " — Оригинал", show=show),
+        plot_likert_heatmap(gen, "generated", " — Генерация", show=show),
+    ]
+    files = [path for path in produced if path is not None]
+
+    print(f"\n🎉 Все графики сохранены в папке '{OUTPUT_DIR}/'")
+    return files
 
 
 if __name__ == "__main__":
-    ensure_dirs()
-    orig, gen = load_data()
-    print(f"📊 Построение графиков: оригинал {len(orig)} записей, генерация {len(gen)} записей")
-
-    plot_gender_balance(orig, gen)
-    plot_distributions_comparison(orig, gen)
-    plot_likert_heatmap(orig, "original", " — Оригинал")
-    plot_likert_heatmap(gen, "generated", " — Генерация")
-
-    print(f"\n🎉 Все графики сохранены в папке '{OUTPUT_DIR}/'")
+    run_all()

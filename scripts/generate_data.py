@@ -25,8 +25,9 @@ def random_datetime(start, end):
     return (start + timedelta(seconds=rand_seconds)).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def generate_records(n):
-    with open(QA_JSON, "r", encoding="utf-8") as f:
+def generate_records(n, qa_source=None):
+    """Генерирует n записей. qa_source — путь к словарю вопросов (по умолчанию QA_JSON)."""
+    with open(Path(qa_source) if qa_source else QA_JSON, "r", encoding="utf-8") as f:
         qa = json.load(f)
 
     records = []
@@ -56,13 +57,14 @@ def generate_records(n):
     return records
 
 
-def generate_and_save(n: int = NUM_RECORDS) -> list[dict]:
-    """Генерирует n записей и сохраняет их в GENERATED_JSON."""
-    records = generate_records(n)
-    Path(GENERATED_JSON).parent.mkdir(parents=True, exist_ok=True)
-    with open(GENERATED_JSON, "w", encoding="utf-8") as f:
+def generate_and_save(n: int = NUM_RECORDS, qa_source=None, output=None) -> list[dict]:
+    """Генерирует n записей и сохраняет их в GENERATED_JSON (или в output)."""
+    records = generate_records(n, qa_source=qa_source)
+    out_path = Path(output) if output else Path(GENERATED_JSON)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump(records, f, ensure_ascii=False, indent=2)
-    print(f"✅ Сгенерировано {n} записей → {GENERATED_JSON}")
+    print(f"✅ Сгенерировано {n} записей → {out_path}")
     return records
 
 

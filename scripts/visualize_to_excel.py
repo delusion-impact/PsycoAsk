@@ -1,6 +1,8 @@
-import pandas as pd
-import json
+from __future__ import annotations
+
 from pathlib import Path
+
+import pandas as pd
 
 from paths import GENERATED_JSON, REPORT_XLSX, SURVEY_JSON, ensure_dirs, stamped
 
@@ -9,6 +11,9 @@ ORIGINAL_FILE = SURVEY_JSON  # Опционально, для сравнения
 OUTPUT_XLSX = REPORT_XLSX
 
 EXCLUDE_KEYS = {"ID", "Время создания"}
+
+MALE_COLUMN = "Ваш пол / Мужской"
+FEMALE_COLUMN = "Ваш пол / Женский"
 
 
 def build_distribution_table(filepath):
@@ -35,14 +40,20 @@ def build_distribution_table(filepath):
 
 
 def build_gender_table(orig_path, gen_path):
-    """Строит таблицу баланса пола"""
+    """Строит таблицу баланса пола.
+
+    Столбцы о поле опциональны: если в выгрузке их нет, лист остаётся пустым,
+    а не роняет весь отчёт (в UI это отдельная выгрузка без вопроса о поле).
+    """
     rows = []
     for label, path in [("Оригинал", orig_path), ("Генерация", gen_path)]:
-        if not Path(path).exists():
+        if not path or not Path(path).exists():
             continue
         df = pd.read_json(path, orient='records')
-        male = int(df["Ваш пол / Мужской"].notna().sum())
-        female = int(df["Ваш пол / Женский"].notna().sum())
+        if MALE_COLUMN not in df.columns and FEMALE_COLUMN not in df.columns:
+            continue
+        male = int(df[MALE_COLUMN].notna().sum()) if MALE_COLUMN in df.columns else 0
+        female = int(df[FEMALE_COLUMN].notna().sum()) if FEMALE_COLUMN in df.columns else 0
         total = len(df)
         rows.append({
             "Источник": label,
@@ -52,7 +63,8 @@ def build_gender_table(orig_path, gen_path):
             "% Мужской": round(male / total * 100, 1) if total else 0,
             "% Женский": round(female / total * 100, 1) if total else 0,
         })
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=["Источник", "Мужской", "Женский",
+                                       "Всего", "% Мужской", "% Женский"])
 
 
 def apply_conditional_formatting(writer, sheet_name, df):
@@ -94,14 +106,13 @@ def apply_conditional_formatting(writer, sheet_name, df):
         ws.column_dimensions[get_column_letter(col_idx)].width = 18
 
 
-if __name__ == "__main__":
-    print("📊 Формирование отчёта...")
-
+def build_report(generated=None, original=None, output=None) -> Path:
+    """Отчёт Excel: распределения + баланс пола + легенда."""
     ensure_dirs()
 
-    dist_gen = build_distribution_table(GENERATED_FILE)
-    gender = build_gender_table(ORIGINAL_FILE, GENERATED_FILE)
-    out_path = stamped(OUTPUT_XLSX)
+    dist_gen = build_distribution_table(generated or GENERATED_FILE)
+    gender = build_gender_table(original or ORIGINAL_FILE, generated or GENERATED_FILE)
+    out_path = Path(output) if output else stamped(OUTPUT_XLSX)
 
     with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
         # Лист 1: Распределения
@@ -127,3 +138,9 @@ if __name__ == "__main__":
     print(f"   • Лист 'Распределения': {len(dist_gen)} вопросов")
     print(f"   • Лист 'Баланс пола': сравнение оригинала и генерации")
     print(f"   • Цветовая шкала применена автоматически")
+    return out_path
+
+
+if __name__ == "__main__":
+    print("📊 Формирование отчёта...")
+    build_report()

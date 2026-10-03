@@ -11,6 +11,13 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
+# Сборка EXE. PyInstaller пишет рабочие файлы в build/, поэтому исключаем всю
+# папку, кроме скрипта сборки и спецификации.
+build/*
+!build/build.ps1
+!build/*.spec
+dist/
+
 # Временные файлы Excel
 ~$*.xlsx
 
@@ -18,3 +25,7 @@ __pycache__/
 output/charts/*.png
 output/reports/*.xlsx
 data/generated/*
+data/intermediate/run_stamp.txt
+
+# Журнал падения приложения
+crash.log

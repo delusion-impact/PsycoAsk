@@ -1,5 +1,7 @@
-import pandas as pd
 import json
+from pathlib import Path
+
+import pandas as pd
 from openpyxl.formatting.rule import DataBarRule
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
@@ -102,13 +104,12 @@ def style_and_format(writer, df):
     ws.freeze_panes = 'A2'
 
 
-if __name__ == "__main__":
-    print("📊 Формирование таблицы с барами...")
-
+def build_bars_report(source=None, output=None) -> Path:
+    """Таблица с Data Bars внутри ячеек: JSON после генерации → XLSX."""
     ensure_dirs()
 
-    df_long = build_long_format(GENERATED_FILE)
-    out_path = stamped(OUTPUT_XLSX)
+    df_long = build_long_format(source or GENERATED_FILE)
+    out_path = Path(output) if output else stamped(OUTPUT_XLSX)
 
     with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
         df_long.to_excel(writer, sheet_name="Распределение ответов", index=False)
@@ -117,3 +118,9 @@ if __name__ == "__main__":
     print(f"✅ Файл сохранён: {out_path}")
     print(f"   Всего строк: {len(df_long)}")
     print(f"   Визуализация: Data Bars (гистограммы внутри ячеек)")
+    return out_path
+
+
+if __name__ == "__main__":
+    print("📊 Формирование таблицы с барами...")
+    build_bars_report()
