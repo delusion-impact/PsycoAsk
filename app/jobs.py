@@ -1,6 +1,6 @@
 """Фоновые задачи с прогрессом.
 
-Парсинг, генерация и визуализация занимают секунды, поэтому выполняются в
+Парсинг, генерация и Excel-отчёты занимают секунды, поэтому выполняются в
 отдельном потоке: UI не зависает и показывает прогресс-бар. Задачи идут
 строго по одной — шаги пайплайна пишут в общие файлы, параллельный запуск
 смешал бы результаты разных прогонов.
@@ -39,20 +39,25 @@ class Job:
     created: str = field(
         default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
     finished: str | None = None
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False,
+                                  compare=False)
 
     def snapshot(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
-            "kind": self.kind,
-            "status": self.status,
-            "progress": round(self.progress, 4),
-            "message": self.message,
-            "log": self.log[-MAX_LOG_LINES:],
-            "result": self.result,
-            "error": self.error,
-            "created": self.created,
-            "finished": self.finished,
-        }
+        # Поля пишутся из рабочего потока и читаются из потоков запросов:
+        # без блокировки snapshot может "сшить" состояние наполовину.
+        with self._lock:
+            return {
+                "id": self.id,
+                "kind": self.kind,
+                "status": self.status,
+                "progress": round(self.progress, 4),
+                "message": self.message,
+                "log": self.log[-MAX_LOG_LINES:],
+                "result": self.result,
+                "error": self.error,
+                "created": self.created,
+                "finished": self.finished,
+            }
 
 
 class JobManager:
@@ -103,24 +108,28 @@ class JobManager:
         with self._gate:  # одна задача за раз
             with self._lock:
                 self._active = job.id
+            with job._lock:
                 job.status = RUNNING
                 job.message = "Запуск"
             try:
                 job.result = work(self._progress_of(job)) or {}
-                job.message = "Готово"
+                with job._lock:
+                    job.message = "Готово"
             except Exception as exc:  # noqa: BLE001 — ошибку показываем в UI
-                job.status = FAILED
-                job.error = f"{type(exc).__name__}: {exc}".strip()
-                job.message = "Ошибка"
-                job.log.append(f"❌ {job.error}")
                 tail = traceback.format_exc(limit=3).strip().splitlines()
-                if len(tail) > 1:
-                    job.log.append(tail[-1])
-                job.finished = datetime.now().isoformat(timespec="seconds")
+                with job._lock:
+                    job.status = FAILED
+                    job.error = f"{type(exc).__name__}: {exc}".strip()
+                    job.message = "Ошибка"
+                    job.log.append(f"❌ {job.error}")
+                    if len(tail) > 1:
+                        job.log.append(tail[-1])
+                    job.finished = datetime.now().isoformat(timespec="seconds")
             else:
-                job.status = DONE
-                job.progress = 1.0
-                job.finished = datetime.now().isoformat(timespec="seconds")
+                with job._lock:
+                    job.status = DONE
+                    job.progress = 1.0
+                    job.finished = datetime.now().isoformat(timespec="seconds")
 
         with self._lock:
             self._active = None
@@ -131,10 +140,11 @@ class JobManager:
     @staticmethod
     def _progress_of(job: Job) -> Progress:
         def progress(fraction: float, message: str = "") -> None:
-            job.progress = max(0.0, min(1.0, float(fraction)))
-            if message:
-                job.message = str(message)
-                job.log.append(str(message))
+            with job._lock:
+                job.progress = max(0.0, min(1.0, float(fraction)))
+                if message:
+                    job.message = str(message)
+                    job.log.append(str(message))
 
         return progress
 

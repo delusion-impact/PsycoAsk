@@ -81,7 +81,10 @@ class PsycoAskHandler(BaseHTTPRequestHandler):
         байты сервер принял бы за начало следующего запроса — тот падал бы
         с 501, а интерфейс сообщал бы «Ошибка 501» на пустом месте.
         """
-        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError as exc:
+            raise ApiError("Некорректный Content-Length") from exc
         if length <= 0:
             return b""
         if length > MAX_BODY_BYTES:
@@ -161,7 +164,12 @@ class PsycoAskHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.NO_CONTENT)
         self.send_header("Allow", "GET, POST, HEAD, OPTIONS")
         self.send_header("Content-Length", "0")
-        self.send_header("Access-Control-Allow-Origin", self.headers.get("Origin", "*"))
+        # CORS разрешаем только самому приложению; отражать любой Origin
+        # нельзя — токен тоже идёт в ответе при GET /
+        origin = self.headers.get("Origin", "")
+        hostname = urlparse(origin).hostname if origin else ""
+        if hostname in ("127.0.0.1", "localhost", "::1"):
+            self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Access-Control-Allow-Headers", f"{TOKEN_HEADER}, Content-Type")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS")
         self.end_headers()
@@ -185,6 +193,10 @@ class PsycoAskHandler(BaseHTTPRequestHandler):
                 self._fail("Метод не поддерживается", HTTPStatus.METHOD_NOT_ALLOWED)
         except ApiError as exc:
             self._fail(exc.message, exc.status)
+        except ValueError as exc:
+            # Ошибки валидации уровня "файл больше N МБ" показываем как 400,
+            # а не как 500
+            self._fail(str(exc), HTTPStatus.BAD_REQUEST)
         except PermissionError as exc:
             self._fail(str(exc), HTTPStatus.FORBIDDEN)
         except FileNotFoundError as exc:
@@ -222,6 +234,7 @@ class PsycoAskHandler(BaseHTTPRequestHandler):
         elif route == "/api/generate" and method == "POST":
             body = self._json_body()
             generator = bridge.module("generate_data")
+            bars = bool(body.get("bars", False))
             count = body.get("count", generator.NUM_RECORDS)
             try:
                 count = int(count)
@@ -229,34 +242,27 @@ class PsycoAskHandler(BaseHTTPRequestHandler):
                 raise ApiError("Количество анкет должно быть числом") from exc
             if not 1 <= count <= generator.MAX_NUM_RECORDS:
                 raise ApiError(f"Количество анкет: от 1 до {generator.MAX_NUM_RECORDS}")
+            preset = str(body.get("preset") or "").strip()
+            compare = bool(body.get("compare", False))
+            if compare:
+                known = {name.casefold()
+                         for name in generator.available_presets()}
+                missing = [p for p in generator.COMPARISON_PRESETS
+                           if p.casefold() not in known]
+                if missing:
+                    raise ApiError("Нет пресетов для сравнения: "
+                                   + ", ".join(missing))
+            elif preset:
+                known = generator.available_presets()
+                if not any(preset.casefold() == name.casefold() for name in known):
+                    raise ApiError(f"Неизвестный набор ответов: «{preset}»")
             if not Path(bridge.paths().QA_JSON).exists():
                 raise ApiError("Сначала разберите выгрузку: нет словаря вопросов")
-            job = JOBS.submit("generate", lambda progress: bridge.generate(count, progress))
-            self._json({"ok": True, "job": job.snapshot()})
-        elif route == "/api/visualize" and method == "POST":
-            body = self._json_body()
-            charts = bool(body.get("charts", True))
-            reports = bool(body.get("reports", True))
-            if not charts and not reports:
-                raise ApiError("Выберите графики или отчёты")
-            if not Path(bridge.paths().GENERATED_JSON).exists():
-                raise ApiError("Сначала сгенерируйте анкеты: нет файла с ответами")
-
-            def work(progress: Progress) -> dict[str, Any]:
-                total = int(charts) + int(reports)
-                step = 1 / total
-                done = 0
-                files: list[str] = []
-                if charts:
-                    files += [config.relative(path) for path in bridge.build_charts(progress)]
-                    done += step
-                if reports:
-                    files += [config.relative(path) for path in bridge.build_reports(progress)]
-                    done += step
-                progress(1.0, "Визуализация завершена")
-                return {"files": files, "artifacts": bridge.artifacts()}
-
-            job = JOBS.submit("visualize", work)
+            job = JOBS.submit("generate",
+                              lambda progress: bridge.generate(count, progress,
+                                                               bars=bars,
+                                                               preset=preset or None,
+                                                               compare=compare))
             self._json({"ok": True, "job": job.snapshot()})
         elif route == "/api/jobs" and method == "GET":
             self._json({"ok": True, "jobs": JOBS.list(), "active": JOBS.active})
@@ -310,7 +316,9 @@ def reveal(path: Path) -> None:
     target = str(path)
     if _sys.platform == "win32":
         if Path(target).is_file():
-            subprocess.Popen(["explorer", "/select,", target])
+            # Флаг и путь — одним аргументом, иначе explorer открывает
+            # файл вместо выделения его в Проводнике
+            subprocess.Popen(["explorer", f"/select,{target}"])
         else:
             os.startfile(target)  # noqa: S606 — стандартный Проводник Windows
     elif _sys.platform == "darwin":

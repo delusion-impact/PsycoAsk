@@ -4,6 +4,14 @@
 // отклоняются, поэтому любая страница в браузере не сможет запустить пайплайн.
 const TOKEN = window.PSYCOASK_TOKEN || "";
 
+// Токен мог попасть в адресную строку старых сборок (?token=...):
+// убираем его из истории, в коде он уже есть из разметки.
+if (window.location.search) {
+  history.replaceState(null, "", window.location.pathname);
+}
+
+let MAX_COUNT = 1000; // лимит анкет при генерации; /api/state уточняет
+
 const state = {
   step: 1,
   file: null,
@@ -67,25 +75,16 @@ function humanSize(bytes) {
 
 // === Панели ===
 
-// Есть ли уже файлы визуализации: от этого зависит и кнопка «Результаты» на
-// шаге 3, и отметки пройденных шагов на экране результатов.
-function hasVisualResults() {
-  return state.artifacts.some((item) => item.category === "visualize");
-}
-
 function showPanel(name) {
   state.step = name;
   $$(".panel").forEach((panel) => {
     panel.classList.toggle("is-active", panel.dataset.panel === String(name));
   });
-  const order = ["1", "2", "3"];
+  const order = ["1", "2"];
   const current = order.indexOf(String(name));
   // На экране результатов ни один шаг не активен, но выполненными отмечены
-  // только реально пройденные: после одной генерации «Визуализация» ещё не
-  // завершена и зелёной быть не должна.
-  const reached = current < 0
-    ? (hasVisualResults() ? 3 : state.generated ? 2 : 1)
-    : current;
+  // только реально пройденные.
+  const reached = current < 0 ? (state.generated ? 2 : 1) : current;
   $$(".step").forEach((tab) => {
     const index = order.indexOf(tab.dataset.step);
     tab.classList.toggle("is-active", index === current);
@@ -118,7 +117,7 @@ function renderInputs(inputs) {
   list.innerHTML = "";
 
   if (!inputs.length) {
-    list.innerHTML = '<li class="empty" style="cursor:default">В папке data/input нет Excel-файлов — загрузите выгрузку</li>';
+    list.innerHTML = '<li class="empty" style="cursor:default">Выберите файл для обработки</li>';
     return;
   }
 
@@ -151,6 +150,7 @@ function applyState(data) {
   state.parsed = Boolean(data.parsed);
   state.generated = Boolean(data.generated);
   if (data.stamp) state.stamp = data.stamp;
+  if (data.max_count) MAX_COUNT = data.max_count;
   $("#workspace-chip").textContent = data.workspace || "";
   $("#workspace-chip").title = data.workspace || "";
   renderInputs(state.inputs);
@@ -165,25 +165,8 @@ function applyState(data) {
     $("#parse-summary").textContent =
       `Словарь собран: вопросов — ${data.questions}, вариантов ответов — ${data.answers}. ` +
       "Генератор выбирает ответы из этого словаря.";
-    renderQuestions(data.question_preview || []);
   }
   syncButtons();
-}
-
-function renderQuestions(items) {
-  const box = $("#questions-box");
-  const list = $("#questions-list");
-  list.innerHTML = "";
-  if (!items.length) { box.hidden = true; return; }
-  box.hidden = false;
-  items.forEach((item) => {
-    const node = document.createElement("div");
-    node.className = "q-item";
-    node.innerHTML = "<b></b><span></span>";
-    node.querySelector("b").textContent = item.question;
-    node.querySelector("span").textContent = item.options.join(" · ");
-    list.appendChild(node);
-  });
 }
 
 $("#upload").addEventListener("change", async (event) => {
@@ -220,12 +203,14 @@ const countInput = $("#count");
 const countRange = $("#count-range");
 
 function syncCount(value) {
-  const parsed = Math.max(1, Math.min(1000, Number(value) || 1));
+  const parsed = Math.max(1, Math.min(MAX_COUNT, Number(value) || 1));
   countInput.value = parsed;
-  countRange.value = Math.min(parsed, 1000);
+  countRange.value = Math.min(parsed, MAX_COUNT);
+  countInput.max = MAX_COUNT;
+  countRange.max = MAX_COUNT;
 }
 
-countInput.addEventListener("input", () => { countRange.value = Math.min(Number(countInput.value) || 1, 1000); });
+countInput.addEventListener("input", () => { countRange.value = Math.min(Number(countInput.value) || 1, MAX_COUNT); });
 countInput.addEventListener("change", () => syncCount(countInput.value));
 countRange.addEventListener("input", () => syncCount(countRange.value));
 
@@ -233,13 +218,34 @@ $$("[data-count]").forEach((button) => {
   button.addEventListener("click", () => syncCount(button.dataset.count));
 });
 
-$("#to-2").addEventListener("click", () => showStep(2));
+// === Режим набора ответов: случайный набор vs сравнение пресетов ===
 
-// === Шаг 3: визуализация ===
+const PRESET_HINTS = {
+  random: "«Случайный набор» — обычная генерация, количество анкет настраивается; ответы берутся по профилям из <code>MEMpreset.json</code>",
+  compare: "«Сравнение» — ровно 3 анкеты (по одной на каждый пресет: РФ / Китай / Европа), настройки количества не действуют. Вместо отчёта с data bars строится Excel-отчёт: тепловая карта, радар, бабочка и топ-10 различий",
+};
 
-["#opt-charts", "#opt-reports"].forEach((selector) => {
-  $(selector).addEventListener("change", syncButtons);
+function isCompare() {
+  return document.querySelector('input[name="preset"]:checked')?.value === "compare";
+}
+
+function syncPresetMode() {
+  const compare = isCompare();
+  countInput.disabled = compare;
+  countRange.disabled = compare;
+  $$("[data-count]").forEach((button) => { button.disabled = compare; });
+  const bars = $("#opt-bars");
+  bars.disabled = compare;
+  if (compare) bars.checked = false;
+  $("#preset-hint").innerHTML = compare ? PRESET_HINTS.compare : PRESET_HINTS.random;
+}
+
+$$('input[name="preset"]').forEach((radio) => {
+  radio.addEventListener("change", syncPresetMode);
 });
+syncPresetMode();
+
+$("#to-2").addEventListener("click", () => showStep(2));
 
 // === Ход работы: текстовое поле в потоке страницы ===
 
@@ -289,13 +295,10 @@ function waitFor(job, attempts = 0) {
 // кнопка «Построить» оставалась неактивной, пока чекбокс не трогали.
 function syncButtons() {
   const hasInputs = Boolean(state.file);
-  const wantsVisual = $("#opt-charts").checked || $("#opt-reports").checked;
 
   $("#run-generate").disabled = state.busy || !hasInputs;
-  $("#run-visualize").disabled = state.busy || !state.generated || !wantsVisual;
   $("#to-2").disabled = !state.parsed && !hasInputs;
   $("#to-results-gen").disabled = state.busy || !state.generated;
-  $("#to-results-viz").disabled = state.busy || !hasVisualResults();
 
   const generate = $("#run-generate");
   generate.textContent = hasInputs
@@ -306,28 +309,26 @@ function syncButtons() {
   } else {
     generate.title = "";
   }
-
-  const visualize = $("#run-visualize");
-  if (!state.generated) {
-    visualize.title = "Сначала выполните генерацию на шаге 2";
-  } else if (!wantsVisual) {
-    visualize.title = "Отметьте графики или отчёты";
-  } else {
-    visualize.title = "";
-  }
 }
 
 // === Запуск шагов ===
 
 $("#run-generate").addEventListener("click", async () => {
   if (!state.file) return;
-  const count = Math.max(1, Math.min(1000, Number(countInput.value) || 1));
+  const count = Math.max(1, Math.min(MAX_COUNT, Number(countInput.value) || 1));
   try {
     const { job } = await post("/api/parse", { file: state.file });
     startTask(job, "Разбор выгрузки");
     await waitFor(job);
 
-    const next = await post("/api/generate", { count });
+    const compare = isCompare();
+    const preset = compare ? "" : (document.querySelector('input[name="preset"]:checked')?.value || "");
+    const next = await post("/api/generate", {
+      count,
+      bars: !compare && $("#opt-bars").checked,
+      preset,
+      compare,
+    });
     startTask(next.job, "Генерация анкет");
     const done = await waitFor(next.job);
 
@@ -335,28 +336,6 @@ $("#run-generate").addEventListener("click", async () => {
     notify(`Сгенерировано анкет: ${done.result.count}`, "ok");
     await refreshState();
     showStep(2);
-  } catch (error) {
-    $("#task-bar").style.background = "var(--err)";
-    closeTask();
-    notify(error.error || error.message, "error");
-  }
-});
-
-$("#run-visualize").addEventListener("click", async () => {
-  try {
-    const { job } = await post("/api/visualize", {
-      charts: $("#opt-charts").checked,
-      reports: $("#opt-reports").checked,
-    });
-    startTask(job, "Визуализация");
-    const done = await waitFor(job);
-
-    closeTask();
-    notify("Визуализация завершена", "ok");
-    await refreshState();
-    state.resultsCategory = "visualize";
-    renderResults();
-    showResults();
   } catch (error) {
     $("#task-bar").style.background = "var(--err)";
     closeTask();
@@ -379,7 +358,6 @@ async function refreshState() {
 
 const RESULTS_TITLES = {
   generate: "Результаты генерации",
-  visualize: "Результаты визуализации",
 };
 
 function resultsHeader() {
@@ -402,8 +380,7 @@ function renderResults() {
   const list = $("#artifacts");
   list.innerHTML = "";
   if (!items.length) {
-    const label = state.resultsCategory === "generate" ? "генерации"
-      : state.resultsCategory === "visualize" ? "визуализации" : "прогона";
+    const label = state.resultsCategory === "generate" ? "генерации" : "прогона";
     list.innerHTML = `<li class="empty" style="cursor:default">Файлы ${label} пока нет</li>`;
     return;
   }
@@ -438,14 +415,6 @@ $("#to-results-gen").addEventListener("click", async () => {
   if (state.busy) return;
   await refreshState();
   state.resultsCategory = "generate";
-  renderResults();
-  showResults();
-});
-
-$("#to-results-viz").addEventListener("click", async () => {
-  if (state.busy) return;
-  await refreshState();
-  state.resultsCategory = "visualize";
   renderResults();
   showResults();
 });

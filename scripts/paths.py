@@ -17,10 +17,8 @@ INTERMEDIATE_DIR = DATA_DIR / "intermediate"
 GENERATED_DATA_DIR = DATA_DIR / "generated"
 
 OUTPUT_DIR = ROOT_DIR / "output"
-CHARTS_DIR = OUTPUT_DIR / "charts"
 REPORTS_DIR = OUTPUT_DIR / "reports"
 
-REF_XLSX = INPUT_DIR / "ref.xlsx"
 SURVEY_JSON = INTERMEDIATE_DIR / "survey_data.json"
 QA_JSON = INTERMEDIATE_DIR / "qa.json"
 GENERATED_JSON = GENERATED_DATA_DIR / "generated_data.json"
@@ -28,12 +26,16 @@ GENERATED_XLSX = GENERATED_DATA_DIR / "generated_survey.xlsx"
 
 REPORT_XLSX = REPORTS_DIR / "visualization_report.xlsx"
 BARS_XLSX = REPORTS_DIR / "visualization_bars.xlsx"
+# Отчёт сравнения трёх пресетов (тепловая карта, радар, бабочка, инсайты)
+COMPARE_XLSX = GENERATED_DATA_DIR / "generated_compare.xlsx"
+
+# Профили респондентов для генерации (опции на шаге «2 Генерация»)
+MEM_PRESET_JSON = INPUT_DIR / "MEMpreset.json"
 
 ALL_DIRS = (
     INPUT_DIR,
     INTERMEDIATE_DIR,
     GENERATED_DATA_DIR,
-    CHARTS_DIR,
     REPORTS_DIR,
 )
 

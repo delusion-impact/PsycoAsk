@@ -2,7 +2,7 @@
 
 Здесь нет копий логики пайплайна: функции из scripts/ вызываются напрямую
 как обычные Python-функции. Скрипты импортируются лениво, чтобы окно
-приложения открывалось мгновенно, а тяжёлые pandas/matplotlib грузились уже
+приложения открывалось мгновенно, а тяжёлые pandas/openpyxl грузились уже
 при первом запуске задачи.
 """
 
@@ -31,7 +31,7 @@ _SCRIPTS_DIR = config.scripts_dir()
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-EXCEL_SUFFIXES = {".xlsx", ".xls", ".xlsm"}
+EXCEL_SUFFIXES = {".txt", ".xlsx", ".xls", ".xlsm"}  # основной источник — .txt
 MAX_UPLOAD_BYTES = 64 * 1024 * 1024
 
 STAMP_FILE = WORKSPACE / "data" / "intermediate" / "run_stamp.txt"
@@ -59,8 +59,11 @@ def begin_run() -> str:
     deadline = time.monotonic() + 3.0
     while True:
         stamp = datetime.now().strftime(paths().STAMP_FORMAT)
-        taken = data_dir("generated") / f"generated_survey_{stamp}.xlsx"
-        if not taken.exists() or time.monotonic() >= deadline:
+        taken = any(
+            folder.exists() and any(stamp in path.stem for path in folder.iterdir())
+            for folder in (data_dir("generated"), WORKSPACE / "output" / "reports")
+        )
+        if not taken or time.monotonic() >= deadline:
             break
         time.sleep(0.1)
 
@@ -73,7 +76,7 @@ def begin_run() -> str:
 def current_stamp() -> str:
     """Штамп текущего прогона.
 
-    Графики и отчёты берут тот же штамп, что и сгенерированный файл, иначе
+    Отчёты берут тот же штамп, что и сгенерированный файл, иначе
     после перезапуска приложения результаты одного прогона разъедутся.
     """
     if STAMP_FILE.exists():
@@ -102,7 +105,7 @@ def safe_name(filename: str) -> str:
 
 
 def list_inputs() -> list[dict[str, Any]]:
-    """Excel-файлы, доступные для обработки."""
+    """Файлы-результаты, доступные для выборки: txt/xlsx из data/input."""
     folder = data_dir("input")
     folder.mkdir(parents=True, exist_ok=True)
     items = []
@@ -128,7 +131,13 @@ def store_upload(filename: str, data: bytes) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / safe_name(filename)
     if path.suffix.lower() not in EXCEL_SUFFIXES:
-        path = path.with_suffix(".xlsx")
+        path = path.with_suffix(".txt")
+    # Не затираем существующую выгрузку: добавляем числовой суффикс
+    base, suffix = path.stem, path.suffix
+    counter = 1
+    while path.exists():
+        path = path.with_name(f"{base} ({counter}){suffix}")
+        counter += 1
     path.write_bytes(data)
     return path
 
@@ -144,30 +153,35 @@ def resolve_input(name: str) -> Path:
 # === Шаги пайплайна ===
 
 def parse_input(filename: str, progress: Progress = _noop) -> dict[str, Any]:
-    """Шаг 1: Excel → survey_data.json + qa.json."""
+    """Шаг 1: текстовый источник (data/input/*.txt) → qa.json."""
     source = resolve_input(filename)
+    if source.suffix.lower() != ".txt":
+        raise ValueError(f"Ожидается текстовый файл .txt, получен: {source.name}")
     core = paths()
     core.ensure_dirs()
 
     progress(0.15, f"Читаем {source.name}")
-    records = module("xlsx_to_json").parse_xlsx_to_json(source, core.SURVEY_JSON)
+    qa = module("txt_to_qa").import_qa(source, core.QA_JSON)
 
-    progress(0.65, "Собираем словарь вопросов и ответов")
-    qa = module("prepare_qa").prepare_qa(core.SURVEY_JSON, core.QA_JSON)
-
-    progress(1.0, "Парсинг завершён")
+    progress(1.0, "Импорт завершён")
     answers = sum(len(options) for options in qa.values())
     return {
         "file": source.name,
-        "records": len(records),
         "questions": len(qa),
         "answers": answers,
         "sample": list(qa)[:5],
     }
 
 
-def generate(count: int, progress: Progress = _noop) -> dict[str, Any]:
-    """Шаг 2: qa.json → generated_data.json + generated_survey_<stamp>.xlsx."""
+def generate(count: int, progress: Progress = _noop, bars: bool = False,
+             preset: str | None = None, compare: bool = False) -> dict[str, Any]:
+    """Шаг 2: qa.json → generated_data.json + generated_survey_<stamp>.xlsx
+
+    compare=True — режим «Сравнение»: по анкете на каждый пресет (3 шт.)
+    и вместо data bars собирается отчёт generated_compare_<stamp>.xlsx
+    (тепловая карта, радар, бабочка, инсайты). preset/bars в этом режиме
+    не используются.
+    preset — профиль респондента из MEMpreset.json; None — случайные ответы."""
     core = paths()
     core.ensure_dirs()
     if not Path(core.QA_JSON).exists():
@@ -175,80 +189,45 @@ def generate(count: int, progress: Progress = _noop) -> dict[str, Any]:
 
     stamp = begin_run()
 
-    progress(0.1, f"Генерируем {count} анкет")
+    if compare:
+        count = len(module("generate_data").COMPARISON_PRESETS)
+        progress(0.1, "Генерируем 3 анкеты: Европа / РФ / Китай")
+    else:
+        progress(0.1, f"Генерируем {count} анкет"
+                 + (f" (набор «{preset}»)" if preset else ""))
     module("generate_data").generate_and_save(count, qa_source=core.QA_JSON,
-                                              output=core.GENERATED_JSON)
+                                              output=core.GENERATED_JSON,
+                                              preset=preset, compare=compare)
 
     progress(0.7, "Выгружаем Excel")
     xlsx = module("json_to_xlsx").convert(core.GENERATED_JSON,
                                           core.stamped(core.GENERATED_XLSX))
 
+    report_xlsx = None
+    bars_xlsx = None
+    if compare:
+        progress(0.85, "Собираем отчёт сравнения: тепловая карта и графики")
+        report_xlsx = module("compare_presets").build_report(
+            output=xlsx.with_name(f"generated_compare_{stamp}{xlsx.suffix}"))
+    elif bars:
+        progress(0.85, "Собираем отчёт Excel с Data Bars")
+        bars_target = xlsx.with_name(f"generated_bars_{stamp}{xlsx.suffix}")
+        bars_xlsx = module("visualize_to_excel_bars").build_bars_report(
+            core.GENERATED_JSON, output=bars_target)
+
     progress(1.0, "Генерация завершена")
-    return {
+    result = {
         "count": count,
         "stamp": stamp,
         "xlsx": config.relative(xlsx),
+        "preset": preset,
+        "compare": compare,
     }
-
-
-def build_charts(progress: Progress = _noop) -> list[Path]:
-    """Шаг 3: графики PNG."""
-    core = paths()
-    core.ensure_dirs()
-    if not Path(core.GENERATED_JSON).exists():
-        raise FileNotFoundError("Сначала выполните генерацию анкет")
-
-    current_stamp()
-    files: list[Path] = []
-
-    # Прогресс делится по графикам, а не по этапам: иначе полоса висит на
-    # одной цифре все время, пока matplotlib рисует листы.
-    figures = [("Тепловая карта ответов", lambda: module("visualize_answers")
-                .build_heatmap(core.GENERATED_JSON, show=False))]
-
-    if Path(core.SURVEY_JSON).exists():
-        comparison = module("visualize_comparison")
-        orig, gen = comparison.load_data(core.SURVEY_JSON, core.GENERATED_JSON)
-        figures += [
-            ("Баланс пола: оригинал против генерации",
-             lambda: comparison.plot_gender_balance(orig, gen, show=False)),
-            ("Распределения топ-10 вопросов",
-             lambda: comparison.plot_distributions_comparison(orig, gen, show=False)),
-            ("Корреляция шкалы Лайкерта — оригинал",
-             lambda: comparison.plot_likert_heatmap(orig, "original", " — Оригинал", show=False)),
-            ("Корреляция шкалы Лайкерта — генерация",
-             lambda: comparison.plot_likert_heatmap(gen, "generated", " — Генерация", show=False)),
-        ]
-
-    for index, (title, build) in enumerate(figures):
-        progress(index / len(figures), title)
-        produced = build()
-        if produced:
-            files.append(Path(produced))
-
-    progress(1.0, "Графики готовы")
-    return files
-
-
-def build_reports(progress: Progress = _noop) -> list[Path]:
-    """Шаг 4: отчёты Excel."""
-    core = paths()
-    core.ensure_dirs()
-    if not Path(core.GENERATED_JSON).exists():
-        raise FileNotFoundError("Сначала выполните генерацию анкет")
-
-    current_stamp()
-    files: list[Path] = []
-
-    progress(0.2, "Отчёт с распределениями")
-    files.append(module("visualize_to_excel").build_report(core.GENERATED_JSON,
-                                                           core.SURVEY_JSON))
-
-    progress(0.7, "Отчёт с гистограммами в ячейках")
-    files.append(module("visualize_to_excel_bars").build_bars_report(core.GENERATED_JSON))
-
-    progress(1.0, "Отчёты готовы")
-    return files
+    if report_xlsx is not None:
+        result["report"] = config.relative(report_xlsx)
+    if bars_xlsx is not None:
+        result["bars"] = config.relative(bars_xlsx)
+    return result
 
 
 # === Артефакты и предпросмотр ===
@@ -259,8 +238,8 @@ STAMP_PATTERN = re.compile(r"\d{8}-\d{6}")
 def _describe(path: Path) -> dict[str, Any]:
     stat = path.stat()
     # Категория нужна интерфейсу, чтобы показывать результаты генерации и
-    # визуализации по отдельности: анкеты лежат в data/generated/, графики и
-    # отчёты — в output/.
+    # отчёты по отдельности: анкеты лежат в data/generated/, отчёты — в
+    # output/reports/.
     parent = path.parent.name.lower()
     category = "generate" if parent == "generated" else "visualize"
     return {
@@ -274,10 +253,9 @@ def _describe(path: Path) -> dict[str, Any]:
 
 
 def _result_files() -> list[Path]:
-    """Все файлы-результаты: анкеты, графики и отчёты."""
+    """Все файлы-результаты: анкеты и отчёты."""
     folders = (
-        (data_dir("generated"), "generated_survey_*.xlsx"),
-        (WORKSPACE / "output" / "charts", "*.png"),
+        (data_dir("generated"), "generated_*.xlsx"),
         (WORKSPACE / "output" / "reports", "*_*.xlsx"),
     )
     files: list[Path] = []
@@ -287,6 +265,11 @@ def _result_files() -> list[Path]:
     return files
 
 
+def _stamp_of(path: Path) -> str | None:
+    match = STAMP_PATTERN.search(path.stem)
+    return match.group(0) if match else None
+
+
 def artifacts(stamp: str | None = None) -> list[dict[str, Any]]:
     """Файлы последнего прогона — с одним штампом в имени.
 
@@ -294,18 +277,16 @@ def artifacts(stamp: str | None = None) -> list[dict[str, Any]]:
     результаты, сделанные консольным пайплайном, тоже видны в интерфейсе.
     """
     files = _result_files()
-    stamps = {match.group(0) for path in files
-              if (match := STAMP_PATTERN.search(path.stem))}
+    stamps = {stamped for path in files if (stamped := _stamp_of(path))}
     current = stamp or (max(stamps) if stamps else None)
     if current:
-        files = [path for path in files if current in path.stem]
+        files = [path for path in files if _stamp_of(path) == current]
     return [_describe(path) for path in sorted(files, key=lambda item: item.name)]
 
 
 def latest_stamp() -> str | None:
     """Штамп последнего прогона по уже созданным файлам."""
-    stamps = {match.group(0) for path in _result_files()
-              if (match := STAMP_PATTERN.search(path.stem))}
+    stamps = {stamped for path in _result_files() if (stamped := _stamp_of(path))}
     return max(stamps) if stamps else None
 
 
@@ -322,6 +303,33 @@ def resolve_in_workspace(relative_path: str) -> Path:
     if not path.exists():
         raise FileNotFoundError(f"Файл не найден: {relative_path}")
     return path
+
+
+_GENERATED_CACHE: dict[str, Any] = {"key": None, "count": 0}
+
+
+def _generated_records() -> int:
+    """Число записей в generated_data.json с кэшем по mtime+size.
+
+    state() опрашивается каждые 300 мс во время задач — перечитывать и
+    перепарсивать весь JSON на каждый опрос не стоит.
+    """
+    core = paths()
+    path = Path(core.GENERATED_JSON)
+    try:
+        stat = path.stat()
+    except OSError:
+        return 0
+    key = (path, stat.st_mtime_ns, stat.st_size)
+    if _GENERATED_CACHE["key"] == key:
+        return _GENERATED_CACHE["count"]
+    try:
+        count = len(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        count = 0
+    _GENERATED_CACHE["key"] = key
+    _GENERATED_CACHE["count"] = count
+    return count
 
 
 def state() -> dict[str, Any]:
@@ -349,7 +357,7 @@ def state() -> dict[str, Any]:
         except (OSError, ValueError):
             qa_map = {}
         options = sum(len(values) for values in qa_map.values())
-        records = len(json.loads(generated.read_text(encoding="utf-8"))) if generated.exists() else 0
+        records = _generated_records() if generated.exists() else 0
         info.update({
             "parsed": bool(qa_map),
             "questions": len(qa_map),
@@ -357,12 +365,11 @@ def state() -> dict[str, Any]:
             "survey_exists": survey.exists(),
             "generated": records > 0,
             "generated_records": records,
-            "question_preview": [
-                {"question": name, "options": [str(value) for value in values[:6]]}
-                for name, values in list(qa_map.items())[:8]
-            ],
+            "max_count": module("generate_data").MAX_NUM_RECORDS,
         })
         if info["generated"]:
-            info["stamp"] = latest_stamp() or current_stamp()
+            # Только читаем штамп из файлов: state() — GET, и не должен
+            # создавать run_stamp.txt или заводить новый прогон.
+            info["stamp"] = latest_stamp()
             info["artifacts"] = artifacts(info["stamp"])
     return info

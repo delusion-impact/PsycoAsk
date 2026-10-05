@@ -4,8 +4,31 @@ import json
 from pathlib import Path
 
 import pandas as pd
+from openpyxl.utils import get_column_letter
 
 from paths import GENERATED_JSON, GENERATED_XLSX, stamped
+
+MAX_COL_WIDTH = 60
+
+
+def autofit_columns(path) -> None:
+    """Ширина столбцов по самому длинному значению с ограничением сверху.
+
+    Буферная прибавка ~2 даёт тот же визуальный эффект, что автоподбор
+    ширины в Excel, но без ручного прохода по каждому столбцу.
+    """
+    from openpyxl import load_workbook
+
+    wb = load_workbook(path)
+    for ws in wb.worksheets:
+        for column_cells in ws.columns:
+            lengths = [len(str(cell.value)) for cell in column_cells
+                       if cell.value is not None]
+            if not lengths:
+                continue
+            width = min(max(lengths) + 2, MAX_COL_WIDTH)
+            ws.column_dimensions[get_column_letter(column_cells[0].column)].width = width
+    wb.save(path)
 
 
 def convert(source=None, output=None) -> Path:
@@ -28,6 +51,7 @@ def convert(source=None, output=None) -> Path:
     out_path = Path(output) if output else stamped(GENERATED_XLSX)
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     df.to_excel(out_path, index=False, engine="openpyxl")
+    autofit_columns(out_path)
     print(f"✅ Excel файл создан: {out_path} ({len(df)} строк)")
     return out_path
 

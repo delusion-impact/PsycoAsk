@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+from openpyxl.formatting.rule import ColorScaleRule
+from openpyxl.utils import get_column_letter
 
 from paths import GENERATED_JSON, REPORT_XLSX, SURVEY_JSON, ensure_dirs, stamped
 
@@ -72,9 +74,6 @@ def apply_conditional_formatting(writer, sheet_name, df):
     Добавляет цветовую шкалу к листу с распределениями.
     Исправлено для поддержки >26 столбцов.
     """
-    from openpyxl.formatting.rule import ColorScaleRule
-    from openpyxl.utils import get_column_letter
-
     ws = writer.sheets[sheet_name]
 
     min_col = 2  # B (пропускаем столбец с названиями вопросов)
@@ -92,7 +91,6 @@ def apply_conditional_formatting(writer, sheet_name, df):
         end_type='max', end_color='4472C4'
     )
 
-    # ✅ Используем get_column_letter вместо chr()
     start_cell = f"{get_column_letter(min_col)}{min_row}"
     end_cell = f"{get_column_letter(max_col)}{max_row}"
     cell_range = f"{start_cell}:{end_cell}"

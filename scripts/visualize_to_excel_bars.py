@@ -79,7 +79,7 @@ def style_and_format(writer, df):
     rule = DataBarRule(
         start_type='num', start_value=0,
         end_type='num', end_value=100,
-        color='4472C4',  # Синий бар (как в matplotlib палитре)
+        color='4472C4',  # Синий бар (стандартный акцент Excel)
         showValue=True  # Показывать число поверх бара
     )
     ws.conditional_formatting.add(data_range, rule)

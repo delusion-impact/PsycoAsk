@@ -28,7 +28,9 @@ def stop_server(server: ThreadingHTTPServer) -> None:
 def run_window(server: ThreadingHTTPServer, port: int, token: str,
                browser: bool = False) -> int:
     """Показывает окно приложения. Возвращает код выхода."""
-    url = f"http://127.0.0.1:{port}/?token={token}"
+    # Токен не кладём в URL: он остаётся в истории браузера и на скриншотах.
+    # Странице он нужен только из разметки (__APP_TOKEN__), оттуда и берётся.
+    url = f"http://127.0.0.1:{port}/"
 
     if not browser:
         try:
@@ -95,4 +97,4 @@ def pick_backend() -> tuple[bool, str]:
     return True, "нативное окно (WebView2)"
 
 
-__all__ = ["run_window", "pick_backend", "stop_server", "webview2_available", "APP_VERSION"]
+__all__ = ["run_window", "pick_backend", "stop_server", "webview2_available"]

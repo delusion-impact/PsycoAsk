@@ -218,18 +218,13 @@ main { max-width: 1080px; margin: 0 auto; padding: 26px; }
 }
 
 .chip-btn:hover { border-color: var(--accent); color: var(--accent-dark); }
+.chip-btn:disabled { opacity: .4; cursor: default; }
+.chip-btn:disabled:hover { border-color: var(--line); color: inherit; }
 
-/* --- Вопросы --- */
+/* Режим «Сравнение»: количество анкет и data bars отключаются */
+.count-box input:disabled { opacity: .55; }
 
-.questions { margin-top: 16px; }
-.questions summary { cursor: pointer; color: var(--accent-dark); font-size: 13.5px; }
-.questions > div { margin-top: 10px; display: grid; gap: 8px; }
-
-.q-item { padding: 9px 12px; border-left: 3px solid var(--accent); background: #f8fafd; border-radius: 0 6px 6px 0; }
-.q-item b { font-size: 13.5px; }
-.q-item span { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
-
-/* --- Опции визуализации --- */
+/* --- Опции шага генерации --- */
 
 .option {
   display: flex;
@@ -246,6 +241,32 @@ main { max-width: 1080px; margin: 0 auto; padding: 26px; }
 .option input { margin-top: 3px; accent-color: var(--accent); }
 .option b { display: block; }
 .option span { color: var(--muted); font-size: 13px; }
+.option input:disabled + div { opacity: .5; }
+
+/* --- Набор ответов (профиль респондента) --- */
+
+.preset-box {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 14px 12px;
+  margin-bottom: 10px;
+}
+.preset-box legend {
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--accent-dark);
+  padding: 0 6px;
+}
+.preset-box .hint { margin-top: 9px; }
+.preset-row { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.preset-row label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.preset-row input { accent-color: var(--accent); }
 
 /* --- Результаты --- */
 
@@ -259,9 +280,6 @@ main { max-width: 1080px; margin: 0 auto; padding: 26px; }
   letter-spacing: .4px;
   color: var(--muted);
 }
-
-.preview-box { margin-top: 18px; }
-.preview-box summary { cursor: pointer; color: var(--accent-dark); font-size: 13.5px; }
 
 /* --- Ход работы --- */
 /* Обычный блок в потоке страницы, а не всплывающее окно: перекрывал панели

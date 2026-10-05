@@ -1,15 +1,13 @@
 """Интерактивный запуск всего пайплайна.
 
-    python scripts/run_pipeline.py            # шаг за шагом, без окон графиков
-    python scripts/run_pipeline.py --show     # показывать окна matplotlib
+    python scripts/run_pipeline.py            # шаг за шагом
     python scripts/run_pipeline.py --yes      # без вопросов: все шаги по умолчанию
 
 Шаги:
     1. Парсинг выгрузки из data/input → survey_data.json + qa.json      (обязательный)
     2. Генерация синтетических ответов → generated_data.json
        и выгрузка в Excel               → generated_survey_*.xlsx       (обязательный)
-    3. Визуализация PNG                 → output/charts/*.png           (можно пропустить)
-    4. Визуализация Excel                → output/reports/*.xlsx         (можно пропустить)
+    3. Визуализация Excel                → output/reports/*.xlsx         (можно пропустить)
 
 Вопрос про каждый шаг задаётся только после того, как предыдущий шаг реально
 создал свой файл. Ответы вводятся цифрами, Enter — вариант по умолчанию.
@@ -30,7 +28,6 @@ from typing import Callable
 
 from generate_data import MAX_NUM_RECORDS, NUM_RECORDS as DEFAULT_NUM_RECORDS
 from paths import (
-    CHARTS_DIR,
     GENERATED_JSON,
     GENERATED_XLSX,
     INPUT_DIR,
@@ -48,7 +45,6 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 ROOT_DIR = SCRIPTS_DIR.parent
 
 AUTO_YES = "--yes" in sys.argv[1:]
-SHOW_PLOTS = "--show" in sys.argv[1:]
 
 DONE = "выполнен"
 SKIPPED = "пропущен"
@@ -60,7 +56,7 @@ MARK_SKIPPED = "⏭ "
 MARK_STOPPED = "⏹ "
 MARK_CANCELLED = "🚫"
 
-REQUIRED_PACKAGES = ("numpy", "pandas", "openpyxl", "matplotlib", "seaborn")
+REQUIRED_PACKAGES = ("numpy", "pandas", "openpyxl")
 
 # Действия, возвращаемые вопросами
 YES = "yes"
@@ -183,21 +179,12 @@ def child_env() -> dict[str, str]:
     env = os.environ.copy()
     env["PYTHONIOENCODING"] = "utf-8"
     env.pop("PYTHONWARNINGS", None)
-    if not SHOW_PLOTS:
-        env["MPLBACKEND"] = "Agg"
     return env
-
-
-def child_flags() -> list[str]:
-    """Без окон графиков plt.show() ругается предупреждением — глушим именно его."""
-    if SHOW_PLOTS:
-        return []
-    return ["-W", "ignore:FigureCanvasAgg is non-interactive:UserWarning"]
 
 
 def run_script(script: str, *args: str) -> bool:
     """Запускает scripts/<script> и возвращает True при успешном коде выхода."""
-    command = [sys.executable, *child_flags(), str(SCRIPTS_DIR / script), *args]
+    command = [sys.executable, str(SCRIPTS_DIR / script), *args]
     print(f"    $ python scripts/{script} {' '.join(args)}".rstrip())
     sys.stdout.flush()  # иначе вывод родителя перемешается с выводом скрипта
     completed = subprocess.run(command, cwd=ROOT_DIR, env=child_env())
@@ -294,33 +281,6 @@ def step_generate() -> str:
     return DONE
 
 
-def step_charts() -> str:
-    """generated_data.json → output/charts/*_<stamp>.png"""
-    if missing(GENERATED_JSON):
-        return SKIPPED
-
-    action = ask("Построить графики (PNG)?",
-                 (Choice("да", YES), Choice("пропустить", SKIP), Choice("отмена", CANCEL)),
-                 YES)
-    if action == SKIP:
-        print(f"    {MARK_SKIPPED} Графики пропущены")
-        return SKIPPED
-    if action == CANCEL:
-        return CANCELLED
-
-    if not run_script("visualize_answers.py"):
-        return CANCELLED
-    if Path(SURVEY_JSON).exists():
-        if not run_script("visualize_comparison.py"):
-            return CANCELLED
-    else:
-        print(f"    ⚠️  {rel(SURVEY_JSON)} нет — сравнение с оригиналом пропущено")
-    if not found_any(CHARTS_DIR, "answer_heatmap_*.png"):
-        print("    ❌ График answer_heatmap не создан")
-        return CANCELLED
-    return DONE
-
-
 def step_reports() -> str:
     """generated_data.json → output/reports/*_<stamp>.xlsx"""
     if missing(GENERATED_JSON):
@@ -361,9 +321,7 @@ def build_steps() -> list[Step]:
              (SURVEY_JSON, QA_JSON)),
         Step(2, "Генерация синтетических ответов и выгрузка в Excel", True, step_generate,
              (GENERATED_JSON, stamped(GENERATED_XLSX))),
-        Step(3, "Визуализация: графики PNG", False, step_charts,
-             (CHARTS_DIR,), f"*_{run_stamp()}.png"),
-        Step(4, "Визуализация: отчёты Excel", False, step_reports,
+        Step(3, "Визуализация: отчёты Excel", False, step_reports,
              (REPORTS_DIR,), f"*_{run_stamp()}.xlsx"),
     ]
 

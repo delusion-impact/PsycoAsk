@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -69,7 +70,28 @@ def setup_workspace() -> Path:
     workspace = default_workspace()
     workspace.mkdir(parents=True, exist_ok=True)
     os.environ["PSYCOASK_HOME"] = str(workspace)
+    _seed_preset(workspace)
     return workspace
+
+
+def _seed_preset(workspace: Path) -> None:
+    """Кладёт MEMpreset.json в data/input рабочей папки, если его там нет.
+
+    Наборы ответов на шаге 2 читаются из рабочей папки, а из EXE туда
+    ничего не попадает само — файл приходит из сборки (data/input рядом
+    со скриптами). Уже существующий файл не трогаем: его можно править.
+    """
+    source = resource_root() / "data" / "input" / "MEMpreset.json"
+    if not source.exists():
+        return
+    target = workspace / "data" / "input" / source.name
+    if target.exists():
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.copyfile(source, target)
+    except OSError:
+        pass  # не мешаем запуску, если папка недоступна на запись
 
 
 def relative(path) -> str:

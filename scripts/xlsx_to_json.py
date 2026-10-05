@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from paths import REF_XLSX, ROOT_DIR, SURVEY_JSON, ensure_dirs
+from paths import INPUT_DIR, ROOT_DIR, SURVEY_JSON, ensure_dirs
 
 ID_KEY = "ID"
 EMPTY_HEADER = "Без названия"
@@ -78,21 +78,26 @@ def parse_xlsx_to_json(file_path: Path | str, output_path: Path | str | None = N
     if not path.exists():
         raise FileNotFoundError(f"Файл не найден: {path}")
 
-    df = pd.read_excel(path, header=0, dtype=str)
-
-    if df.empty:
+    # Один проход по файлу: первая строка — заголовки, остальное — данные.
+    # pandas сам разводит дубли заголовков как 'Вопрос.1', из-за чего
+    # оригинальные имена теряются безвозвратно.
+    raw = pd.read_excel(path, header=None, dtype=str)
+    if raw.empty:
         raise ValueError(f"Лист пуст, нечего парсить: {path}")
 
-    # Заголовки читаем отдельно: pandas сам разводит дубли как 'Вопрос.1',
-    # из-за чего оригинальные имена теряются безвозвратно.
-    header = pd.read_excel(path, header=None, nrows=1, dtype=str)
-    raw_names = header.iloc[0].tolist() if not header.empty else []
+    raw_names = raw.iloc[0].tolist()
     has_header_row = any(pd.notna(value) for value in raw_names)
+    data = raw.iloc[1:] if has_header_row else raw
+    df = data.reset_index(drop=True)
     if has_header_row and len(raw_names) == df.shape[1]:
         df.columns = make_unique_names(raw_names)
+    else:
+        df.columns = [str(col) for col in df.columns]
 
-    # Обрезаем пробелы, пустые строки и NaN приводим к None
-    df = df.astype(object).where(df.map(normalize_value).notna(), None)
+    # Обрезаем пробелы (normalize_value возвращает обрезанное значение —
+    # именно его и сохраняем, а не исходное), пустые строки и NaN → None
+    df = df.astype(object).map(normalize_value)
+    df = df.where(df.notna(), None)
     df.dropna(how="all", inplace=True)
 
     records: list[dict] = []
@@ -125,5 +130,5 @@ def rel(path: Path) -> str:
 if __name__ == "__main__":
     ensure_dirs()
     # Необязательный аргумент: путь к своей выгрузке вместо data/input/ref.xlsx
-    source = Path(sys.argv[1]) if len(sys.argv) > 1 else REF_XLSX
+    source = Path(sys.argv[1]) if len(sys.argv) > 1 else INPUT_DIR / "ref.xlsx"
     parse_xlsx_to_json(source, SURVEY_JSON)

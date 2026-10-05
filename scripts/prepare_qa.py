@@ -27,8 +27,10 @@ def prepare_qa(source=None, output=None):
             # Сохраняем None как отдельный вариант ответа
             qa_map[key].add(value)
 
-    # Преобразуем set в list для сериализации в JSON
-    qa_result = {k: list(v) for k, v in qa_map.items()}
+    # set → list; сортируем, иначе порядок зависит от хэш-рандомизации
+    # и qa.json меняется от запуска к запуску
+    qa_result = {k: sorted(v, key=lambda value: (value is None, str(value)))
+                 for k, v in qa_map.items()}
 
     output.parent.mkdir(parents=True, exist_ok=True)
     with open(output, "w", encoding="utf-8") as f:

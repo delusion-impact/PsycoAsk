@@ -9,10 +9,6 @@ from __future__ import annotations
 import os
 import sys
 
-# Agg обязан быть выбран до первого импорта matplotlib: без него скрипты
-# визуализации открывают окна графиков и блокируют фоновый поток задачи.
-os.environ.setdefault("MPLBACKEND", "Agg")
-
 
 def _ensure_stdio() -> None:
     """Готовит вывод к печати служебных сообщений пайплайна.
@@ -41,6 +37,6 @@ _ensure_stdio()
 
 APP_NAME = "PsycoAsk"
 APP_TITLE = "PsycoAsk — генерация анкет"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.5.0"
 
 __all__ = ["APP_NAME", "APP_TITLE", "APP_VERSION"]

@@ -22,7 +22,6 @@ dist/
 ~$*.xlsx
 
 # Результаты работы пайплайна
-output/charts/*.png
 output/reports/*.xlsx
 data/generated/*
 data/intermediate/run_stamp.txt
